@@ -1,0 +1,4 @@
+interface:
+  display_name: "ShipGate"
+  short_description: "Fail-closed checks for public release surfaces"
+  default_prompt: "Use $shipgate to inspect this project's declared publication surface and stop on any failed or incomplete gate."
