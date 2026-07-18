@@ -14,7 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
   "coverage[toml]>=7.15.2,<8",
-  "mypy>=1.15,<2",
+  "mypy>=2.3.0,<3",
   "ruff>=0.15.22,<1",
 ]
 
