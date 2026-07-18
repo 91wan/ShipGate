@@ -8,7 +8,16 @@ import stat
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from .model import Exclusion, Finding, Inventory, InventoryEntry, Severity
+from .model import (
+    Exclusion,
+    Finding,
+    Inventory,
+    InventoryEntry,
+    MetadataEntry,
+    MetadataScope,
+    Severity,
+    metadata_label,
+)
 
 CHUNK_SIZE = 64 * 1024
 
@@ -53,6 +62,7 @@ def build_filesystem_inventory(
     entries: list[InventoryEntry] = []
     errors: list[Finding] = []
     exclusions: list[Exclusion] = []
+    metadata_entries: list[MetadataEntry] = []
 
     if not root.exists() or not root.is_dir():
         errors.append(
@@ -84,6 +94,14 @@ def build_filesystem_inventory(
             if path.resolve(strict=False) in excluded_resolved:
                 exclusions.append(Exclusion(rel, "report-output"))
                 continue
+            raw_path = rel.encode("utf-8", "surrogateescape")
+            metadata_entries.append(
+                MetadataEntry(
+                    metadata_label(MetadataScope.FILE_PATH, raw_path),
+                    MetadataScope.FILE_PATH,
+                    raw_path,
+                )
+            )
             try:
                 mode = child.stat(follow_symlinks=False).st_mode
             except OSError:
@@ -154,7 +172,13 @@ def build_filesystem_inventory(
     entries.sort(key=lambda item: (item.path, item.source, item.object_id or ""))
     errors.sort(key=lambda item: (item.path, item.code))
     exclusions.sort(key=lambda item: (item.path, item.reason))
-    return Inventory(tuple(entries), errors, tuple(exclusions), project_root=root)
+    return Inventory(
+        tuple(entries),
+        errors,
+        tuple(exclusions),
+        project_root=root,
+        metadata_entries=tuple(metadata_entries),
+    )
 
 
 def stream_file(entry: InventoryEntry) -> Iterator[bytes]:

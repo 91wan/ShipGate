@@ -31,12 +31,17 @@ untracked non-ignored files. Outside Git, it means the filesystem tree excluding
 only `.git` internals and exact report output paths.
 
 `public-push` uses the Git working candidate plus all reachable history. `tag`
-and `release` bind to clean `HEAD` or an explicit `git-ref` and scan its reachable
-history. `index`, `head`, `git-ref` and `history-all` are explicit source models;
-invalid operation/source combinations are CLI usage errors.
+and `release` bind to clean `HEAD` or an explicit `git-ref`. Blob content is
+deduplicated by object ID. Publication metadata is inventoried separately:
+working/index paths, every changed path in the commit walk, paths under
+non-commit tree refs, ref names, commit/tag messages, tag names, and typed Git
+identity fields. `index`, `head`, `git-ref` and `history-all` are explicit source
+models; invalid operation/source combinations are CLI usage errors.
 
-Git object IDs are deduplicated. History blobs are read through `git cat-file
---batch`; no checkout or remote write is performed.
+History blobs and commit/tag objects are read through `git cat-file --batch`;
+historical paths use one `git diff-tree --stdin --root -r -m --no-renames`
+invocation so renamed-away and merge-introduced paths remain visible. No
+checkout or remote write is performed.
 
 ## Status Policy
 

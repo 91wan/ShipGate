@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 from . import __version__
 from .checks.assets import check_assets
 from .checks.project import check_codex_skill, check_macos_app, check_project_type, detect_project
 from .checks.readme import check_readmes
-from .checks.redaction import scan_inventory
+from .checks.redaction import mask_sensitive_text, scan_inventory
 from .git_surface import (
     GitSurfaceError,
     build_git_inventory,
@@ -18,8 +19,11 @@ from .git_surface import (
 )
 from .inventory import build_filesystem_inventory
 from .model import (
+    AssetRecord,
+    Evidence,
     GateResult,
     Inventory,
+    MetadataScope,
     Operation,
     ProjectType,
     Report,
@@ -31,6 +35,27 @@ from .model import (
 from .reporting import report_dict, write_reports
 
 SCHEMA_VERSION = "1.0"
+
+
+def _safe_report_path(path: str) -> str:
+    return mask_sensitive_text(path, MetadataScope.FILE_PATH) or "file-path/redacted"
+
+
+def _mask_gate_paths(gate: GateResult) -> GateResult:
+    return replace(
+        gate,
+        findings=tuple(
+            replace(finding, path=_safe_report_path(finding.path)) for finding in gate.findings
+        ),
+    )
+
+
+def _mask_evidence_paths(evidence: tuple[Evidence, ...]) -> tuple[Evidence, ...]:
+    return tuple(replace(item, path=_safe_report_path(item.path)) for item in evidence)
+
+
+def _mask_asset_paths(assets: tuple[AssetRecord, ...]) -> tuple[AssetRecord, ...]:
+    return tuple(replace(item, path=_safe_report_path(item.path)) for item in assets)
 
 
 def default_source(operation: Operation) -> SourceKind:
@@ -224,13 +249,31 @@ def run_check(
             "No supported project type was selected.",
         )
     redaction_gate = scan_inventory(inventory)
+    inventory.errors[:] = [
+        replace(finding, path=_safe_report_path(finding.path)) for finding in inventory.errors
+    ]
+    inventory.excluded = tuple(
+        replace(item, path=_safe_report_path(item.path)) for item in inventory.excluded
+    )
+    metadata = replace(
+        metadata,
+        ref=mask_sensitive_text(metadata.ref, MetadataScope.REF_NAME),
+        submodules=tuple(
+            mask_sensitive_text(item, MetadataScope.FILE_PATH) or "file-path/redacted"
+            for item in metadata.submodules
+        ),
+    )
     inventory_gate = GateResult(
         "inventory",
         Status.ERROR if inventory.errors else Status.PASS,
         (
             f"Inventory contains {len(inventory.errors)} blocking error(s)."
             if inventory.errors
-            else f"Scanned {inventory.scanned_files} file(s) and {inventory.scanned_bytes} byte(s)."
+            else (
+                f"Scanned {inventory.scanned_files} file(s), "
+                f"{inventory.scanned_metadata} metadata item(s), and "
+                f"{inventory.scanned_bytes} byte(s)."
+            )
         ),
         tuple(inventory.errors),
     )
@@ -240,16 +283,20 @@ def run_check(
         else GateResult("readme-bilingual", Status.FAIL, "README files could not be checked.")
     )
     asset_gate, asset_records = check_assets(project_path, assets, operation, source_only)
-    gates = (
-        exists_gate,
-        source_gate,
-        inventory_gate,
-        type_gate,
-        validation_gate,
-        redaction_gate,
-        readme_gate,
-        asset_gate,
+    gates = tuple(
+        _mask_gate_paths(gate)
+        for gate in (
+            exists_gate,
+            source_gate,
+            inventory_gate,
+            type_gate,
+            validation_gate,
+            redaction_gate,
+            readme_gate,
+            asset_gate,
+        )
     )
+    asset_records = _mask_asset_paths(asset_records)
     report = Report(
         SCHEMA_VERSION,
         __version__,
@@ -257,7 +304,7 @@ def run_check(
         operation,
         project_type,
         detected_type,
-        detection.evidence,
+        _mask_evidence_paths(detection.evidence),
         metadata,
         inventory,
         gates,

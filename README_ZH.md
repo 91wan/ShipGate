@@ -101,9 +101,9 @@ python3 -m shipgate check <项目> --operation local
 | Operation | 发布面 | 资产策略 |
 | --- | --- | --- |
 | `local` | Git tracked + untracked non-ignored 工作文件；非 Git 项目扫描 filesystem tree | 未传资产时为 `not-applicable` |
-| `public-push` | Git 工作候选 + 全部可达历史 | 通常为 `not-applicable` |
-| `tag` | clean `HEAD` 或显式 `git-ref`，包含可达历史 | 资产可选 |
-| `release` | clean `HEAD` 或显式 `git-ref`，包含可达历史 | 默认至少一个资产；只有显式 `--source-only` 才允许无资产 |
+| `public-push` | Git 工作候选 + 可达 blob、commit/tag metadata、refs 与历史路径 | 通常为 `not-applicable` |
+| `tag` | clean `HEAD` 或显式 `git-ref`，包含可达 blob 与发布 metadata | 资产可选 |
+| `release` | clean `HEAD` 或显式 `git-ref`，包含可达 blob 与发布 metadata | 默认至少一个资产；只有显式 `--source-only` 才允许无资产 |
 
 公开 operation 必须在 Git 仓库中运行。浅克隆、未验证 submodule、ref 缺失或 Git 读取失败都会阻断；`tag` 和 `release` 还要求工作树 clean。
 
@@ -138,6 +138,12 @@ python3 scripts/shipgate.py check . \
 ## 门禁与报告
 
 所有检查共用一份 inventory。ShipGate 不会静默跳过 `.github`、大文件、UTF-16、binary 中的 ASCII 指标、broken link、特殊文件或不可读的发布条目。Finding 只输出稳定 code、相对路径、可用时的行号和安全 fingerprint，不输出完整凭据匹配值。
+
+Git 检查还会扫描 working/index/history 路径名、ref 名、commit 与 annotated tag
+message、tag 名，以及按类型区分的 author/committer/tagger 名称与邮箱。含敏感值的
+path 或 ref 会在 Markdown 和 JSON 报告中替换为确定性 label。commit message 中的
+私有路径仍然阻断，包括 `/home/<CI-user>/...` 形式的 CI host home path，且不设
+CI host allowlist。
 
 Unix home path 检测仅有一条有界 fixture 例外：只有位于 `tests` 或 `*Tests`
 目录中的 `.py` 或 `.swift` 文件，才允许使用 synthetic 用户名 `alice` 和

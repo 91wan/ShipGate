@@ -119,9 +119,9 @@ python3 -m shipgate check <project> --operation local
 | Operation | Publication source | Asset policy |
 | --- | --- | --- |
 | `local` | Git tracked + untracked non-ignored working files, or a non-Git filesystem tree | `not-applicable` when none are supplied |
-| `public-push` | Git working candidate plus all reachable history | Assets normally `not-applicable` |
-| `tag` | Clean `HEAD` or explicit `git-ref`, including reachable history | Assets optional |
-| `release` | Clean `HEAD` or explicit `git-ref`, including reachable history | At least one asset, unless `--source-only` is explicit |
+| `public-push` | Git working candidate plus reachable blobs, commit/tag metadata, refs, and historical paths | Assets normally `not-applicable` |
+| `tag` | Clean `HEAD` or explicit `git-ref`, including reachable blobs and publication metadata | Assets optional |
+| `release` | Clean `HEAD` or explicit `git-ref`, including reachable blobs and publication metadata | At least one asset, unless `--source-only` is explicit |
 
 Public operations require a Git repository. Shallow history, unverified
 submodules, missing refs, or Git read failures block the operation. `tag` and
@@ -166,6 +166,13 @@ ShipGate uses one immutable inventory for all checks. It does not silently skip
 special files, or unreadable publication entries. Findings expose stable codes,
 relative paths, optional line numbers, and safe fingerprints, never full matched
 credentials.
+
+Git checks also scan working/index/historical path names, ref names, commit and
+annotated-tag messages, tag names, and typed author/committer/tagger names and
+emails. Secret-bearing path or ref text is replaced by a deterministic label in
+both report formats. Private paths copied into commit messages remain blocking;
+this intentionally includes CI-host home paths such as `/home/<CI-user>/...`
+and has no CI-host allowlist.
 
 Unix home-path detection has one bounded fixture exception: only `.py` or
 `.swift` files under a `tests` or `*Tests` directory may use the synthetic

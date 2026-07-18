@@ -13,7 +13,16 @@ from re import Pattern
 
 from ..git_surface import GitSurfaceError, stream_git_blob
 from ..inventory import inventory_error, stream_file
-from ..model import Finding, GateResult, Inventory, InventoryEntry, Severity, Status
+from ..model import (
+    Finding,
+    GateResult,
+    Inventory,
+    InventoryEntry,
+    MetadataScope,
+    Severity,
+    Status,
+    metadata_label,
+)
 
 OVERLAP = 4096
 SYNTHETIC_TEST_USERS = frozenset({"alice", "example"})
@@ -136,6 +145,20 @@ def _scan_windows(
     return list(findings.values())
 
 
+def mask_sensitive_text(value: str | None, scope: MetadataScope) -> str | None:
+    if value is None:
+        return None
+    raw = value.encode("utf-8", "surrogateescape")
+    label = metadata_label(scope, raw)
+    return label if _scan_windows((raw,), RULES, label) else value
+
+
+def _safe_file_label(path: str) -> str:
+    masked = mask_sensitive_text(path, MetadataScope.FILE_PATH)
+    assert masked is not None
+    return masked
+
+
 def _byte_windows(chunks: Iterable[bytes]) -> Iterator[bytes]:
     overlap = b""
     for chunk in chunks:
@@ -168,14 +191,18 @@ def _entry_chunks(inventory: Inventory, entry: InventoryEntry) -> Iterator[bytes
 
 def scan_inventory(inventory: Inventory) -> GateResult:
     findings: list[Finding] = []
+    for metadata_entry in inventory.metadata_entries:
+        findings.extend(_scan_windows((metadata_entry.content,), RULES, metadata_entry.label))
+        inventory.scanned_metadata += 1
     for entry in inventory.entries:
+        safe_path = _safe_file_label(entry.path)
         lower_name = entry.path.rsplit("/", 1)[-1].lower()
         if lower_name == ".env" or lower_name.startswith(".env."):
             findings.append(
                 Finding(
                     code="secret.env-file",
                     severity=Severity.ERROR,
-                    path=entry.path,
+                    path=safe_path,
                     message="Environment file is part of the publication surface.",
                     fingerprint=_fingerprint("secret.env-file", entry.path),
                 )
@@ -196,10 +223,10 @@ def scan_inventory(inventory: Inventory) -> GateResult:
             if prefix in {codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE}:
                 encoding = "utf-16-le" if prefix == codecs.BOM_UTF16_LE else "utf-16-be"
                 stream = itertools.chain((first[2:],), chunks)
-                findings.extend(_scan_windows(_utf16_windows(stream, encoding), RULES, entry.path))
+                findings.extend(_scan_windows(_utf16_windows(stream, encoding), RULES, safe_path))
             else:
                 stream = itertools.chain((first,), chunks)
-                findings.extend(_scan_windows(_byte_windows(stream), RULES, entry.path))
+                findings.extend(_scan_windows(_byte_windows(stream), RULES, safe_path))
             inventory.scanned_bytes += byte_count
         except (OSError, UnicodeError, GitSurfaceError, ValueError):
             inventory.errors.append(
