@@ -210,7 +210,8 @@ class CoreUnitTests(unittest.TestCase):
         tests = project / "DemoTests"
         tests.mkdir()
         (tests / "PathTests.swift").write_text(
-            'let fixture = "/Users/alice/project/input.md"\n', encoding="utf-8"
+            'let fixture = "/Users/alice/project/input.md"\nlet bareFixture = "/home/example"\n',
+            encoding="utf-8",
         )
 
         report = run_check(project, project_type=ProjectType.CODEX_SKILL)
@@ -230,6 +231,33 @@ class CoreUnitTests(unittest.TestCase):
 
         redaction = next(item for item in report.gates if item.id == "redaction")
         self.assertIn("path.private-unix", {item.code for item in redaction.findings})
+
+    def test_bare_unix_path_and_synthetic_prefix_are_blocked(self):
+        macos_private = "/" + "Users/project-owner"
+        linux_private = "/" + "home/project-owner"
+        symbol_suffix = "/" + "Users/project-owner-"
+        synthetic_prefix = "/" + "Users/alice-real"
+        cases = (
+            ("bare-macos", "Sources/App.swift", f'let path = "{macos_private}"\n'),
+            ("bare-linux", "Sources/App.swift", f'let path = "{linux_private}"\n'),
+            ("symbol-suffix", "Sources/App.swift", f'let path = "{symbol_suffix}"\n'),
+            (
+                "synthetic-prefix",
+                "DemoTests/PathTests.swift",
+                f'let path = "{synthetic_prefix}"\n',
+            ),
+        )
+        for name, relative_path, content in cases:
+            with self.subTest(name=name):
+                project = make_skill(self.root / name)
+                source = project / relative_path
+                source.parent.mkdir()
+                source.write_text(content, encoding="utf-8")
+
+                report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+
+                redaction = next(item for item in report.gates if item.id == "redaction")
+                self.assertIn("path.private-unix", {item.code for item in redaction.findings})
 
     def test_non_synthetic_unix_path_in_test_source_is_blocked(self):
         project = make_skill(self.root / "private-test-source")

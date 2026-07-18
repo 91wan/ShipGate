@@ -36,7 +36,7 @@ RULES = (
     _rule(
         "path.private-unix",
         "Private Unix home path indicator found.",
-        rb"/(?:Users|home)/[A-Za-z0-9._-]+/",
+        rb"/(?:Users|home)/[A-Za-z0-9._-]+(?![A-Za-z0-9._-])",
     ),
     _rule(
         "path.private-windows",
