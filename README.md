@@ -167,6 +167,11 @@ special files, or unreadable publication entries. Findings expose stable codes,
 relative paths, optional line numbers, and safe fingerprints, never full matched
 credentials.
 
+Unix home-path detection has one bounded fixture exception: only `.py` or
+`.swift` files under a `tests` or `*Tests` directory may use the synthetic
+usernames `alice` and `example`. The same names outside test source, and every
+other username inside test source, remain blocking.
+
 Reports include schema/tool versions, operation, project evidence, source
 commit and Git state, inventory counts/errors/exclusions, gates, assets and
 recommendations. Project root is always represented as `.`; report writes are

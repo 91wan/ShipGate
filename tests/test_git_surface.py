@@ -40,6 +40,25 @@ class GitSurfaceTests(unittest.TestCase):
         self.assertIn("secret.github-token", {item.code for item in redaction.findings})
         self.assertEqual(report.source.commit, git(project, "rev-parse", "HEAD"))
 
+    def test_public_push_allows_deleted_synthetic_test_fixture_in_history(self):
+        project = make_skill(self.root / "synthetic-history")
+        tests = project / "DemoTests"
+        tests.mkdir()
+        fixture = tests / "PathTests.swift"
+        fixture.write_text('let path = "/Users/example/project/input.md"\n', encoding="utf-8")
+        init_git(project)
+        fixture.unlink()
+        git(project, "add", "-u")
+        git(project, "commit", "-q", "-m", "remove synthetic fixture")
+
+        report = run_check(
+            project,
+            operation=Operation.PUBLIC_PUSH,
+            project_type=ProjectType.CODEX_SKILL,
+        )
+
+        self.assertEqual(report.status.value, "pass")
+
     def test_index_and_working_tree_are_distinct(self):
         project = make_skill(self.root / "index")
         note = project / "note.txt"

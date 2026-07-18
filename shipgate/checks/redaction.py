@@ -8,6 +8,7 @@ import itertools
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from re import Pattern
 
 from ..git_surface import GitSurfaceError, stream_git_blob
@@ -15,6 +16,8 @@ from ..inventory import inventory_error, stream_file
 from ..model import Finding, GateResult, Inventory, InventoryEntry, Severity, Status
 
 OVERLAP = 4096
+SYNTHETIC_TEST_USERS = frozenset({"alice", "example"})
+TEST_SOURCE_SUFFIXES = frozenset({".py", ".swift"})
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,28 @@ def _line_number(data: bytes | str, start: int) -> int:
     return data[:start].count("\n") + 1
 
 
+def _is_test_source(path: str) -> bool:
+    candidate = PurePosixPath(path)
+    if candidate.suffix.lower() not in TEST_SOURCE_SUFFIXES:
+        return False
+    return any(
+        part.lower() in {"test", "tests", "__tests__"} or part.endswith("Tests")
+        for part in candidate.parts[:-1]
+    )
+
+
+def _is_allowed_synthetic_test_fixture(
+    rule: Rule,
+    path: str,
+    matched: bytes | str,
+) -> bool:
+    if rule.code != "path.private-unix" or not _is_test_source(path):
+        return False
+    value = matched.decode("ascii") if isinstance(matched, bytes) else matched
+    username = value.rstrip("/").rsplit("/", 1)[-1]
+    return username in SYNTHETIC_TEST_USERS
+
+
 def _scan_windows(
     windows: Iterable[bytes | str],
     rules: tuple[Rule, ...],
@@ -90,21 +115,24 @@ def _scan_windows(
         for rule in rules:
             if rule.code in findings:
                 continue
-            match = (
-                rule.pattern.search(window)
+            matches = (
+                rule.pattern.finditer(window)
                 if isinstance(window, bytes)
-                else rule.text_pattern.search(window)
+                else rule.text_pattern.finditer(window)
             )
-            if match is None:
-                continue
-            findings[rule.code] = Finding(
-                code=rule.code,
-                severity=Severity.ERROR,
-                path=path,
-                line=_line_number(window, match.start()),
-                message=rule.message,
-                fingerprint=_fingerprint(rule.code, match.group(0)),
-            )
+            for match in matches:
+                matched = match.group(0)
+                if _is_allowed_synthetic_test_fixture(rule, path, matched):
+                    continue
+                findings[rule.code] = Finding(
+                    code=rule.code,
+                    severity=Severity.ERROR,
+                    path=path,
+                    line=_line_number(window, match.start()),
+                    message=rule.message,
+                    fingerprint=_fingerprint(rule.code, matched),
+                )
+                break
     return list(findings.values())
 
 

@@ -205,6 +205,46 @@ class CoreUnitTests(unittest.TestCase):
         self.assertIn("secret.private-key", codes)
         self.assertIn("path.private-windows", codes)
 
+    def test_synthetic_unix_path_fixture_is_allowed_in_test_source(self):
+        project = make_skill(self.root / "synthetic-test-source")
+        tests = project / "DemoTests"
+        tests.mkdir()
+        (tests / "PathTests.swift").write_text(
+            'let fixture = "/Users/alice/project/input.md"\n', encoding="utf-8"
+        )
+
+        report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+
+        redaction = next(item for item in report.gates if item.id == "redaction")
+        self.assertEqual(redaction.status, Status.PASS)
+
+    def test_synthetic_unix_path_outside_test_source_is_blocked(self):
+        project = make_skill(self.root / "synthetic-production-source")
+        sources = project / "Sources"
+        sources.mkdir()
+        (sources / "App.swift").write_text(
+            'let fixture = "/Users/example/project/input.md"\n', encoding="utf-8"
+        )
+
+        report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+
+        redaction = next(item for item in report.gates if item.id == "redaction")
+        self.assertIn("path.private-unix", {item.code for item in redaction.findings})
+
+    def test_non_synthetic_unix_path_in_test_source_is_blocked(self):
+        project = make_skill(self.root / "private-test-source")
+        tests = project / "DemoTests"
+        tests.mkdir()
+        private_path = "/" + "Users/project-owner/project/input.md"
+        (tests / "PathTests.swift").write_text(
+            f'let fixture = "{private_path}"\n', encoding="utf-8"
+        )
+
+        report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+
+        redaction = next(item for item in report.gates if item.id == "redaction")
+        self.assertIn("path.private-unix", {item.code for item in redaction.findings})
+
     @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO support required")
     def test_special_file_is_inventory_error(self):
         project = make_skill(self.root / "fifo")

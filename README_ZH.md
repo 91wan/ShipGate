@@ -139,6 +139,11 @@ python3 scripts/shipgate.py check . \
 
 所有检查共用一份 inventory。ShipGate 不会静默跳过 `.github`、大文件、UTF-16、binary 中的 ASCII 指标、broken link、特殊文件或不可读的发布条目。Finding 只输出稳定 code、相对路径、可用时的行号和安全 fingerprint，不输出完整凭据匹配值。
 
+Unix home path 检测仅有一条有界 fixture 例外：只有位于 `tests` 或 `*Tests`
+目录中的 `.py` 或 `.swift` 文件，才允许使用 synthetic 用户名 `alice` 和
+`example`。这些名称出现在 test source 之外，或任何其他用户名出现在 test
+source 内，仍然会阻断。
+
 报告包含 schema/tool 版本、operation、项目 evidence、source commit 和 Git 状态、inventory 数量/错误/排除项、gates、assets 与 recommendations。项目根固定表示为 `.`；报告原子写入且结果稳定。
 
 退出码：
