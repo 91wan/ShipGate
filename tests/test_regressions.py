@@ -91,6 +91,34 @@ class RegressionTests(unittest.TestCase):
 
         self.assertEqual(self.redaction_gate(report)["status"], "fail")
 
+    def test_large_file_findings_report_absolute_stream_line_numbers(self):
+        project = self.make_skill("line-numbers")
+        token = github_token()
+        line_count = 100_000
+        expected_line = line_count + 1
+
+        (project / "bytes.txt").write_bytes((b"x\n" * line_count) + token.encode())
+        bytes_report = self.check(project)
+        bytes_finding = next(
+            finding
+            for finding in self.redaction_gate(bytes_report)["findings"]
+            if finding["code"] == "secret.github-token" and finding["path"] == "bytes.txt"
+        )
+        self.assertEqual(bytes_finding["line"], expected_line)
+
+        (project / "bytes.txt").unlink()
+        (project / "utf16.txt").write_text(
+            ("x\n" * line_count) + token,
+            encoding="utf-16",
+        )
+        utf16_report = self.check(project)
+        utf16_finding = next(
+            finding
+            for finding in self.redaction_gate(utf16_report)["findings"]
+            if finding["code"] == "secret.github-token" and finding["path"] == "utf16.txt"
+        )
+        self.assertEqual(utf16_finding["line"], expected_line)
+
     def test_scans_utf16_and_windows_private_path(self):
         project = self.make_skill()
         payload = "C:" + "\\Users\\" + "alice\\private\\file " + github_token()

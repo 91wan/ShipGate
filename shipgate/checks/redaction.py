@@ -37,6 +37,12 @@ class Rule:
     text_pattern: Pattern[str]
 
 
+@dataclass(frozen=True)
+class ScanWindow:
+    data: bytes | str
+    line_base: int
+
+
 def _rule(code: str, message: str, pattern: bytes) -> Rule:
     return Rule(code, message, re.compile(pattern), re.compile(pattern.decode("ascii")))
 
@@ -115,12 +121,13 @@ def _is_allowed_synthetic_test_fixture(
 
 
 def _scan_windows(
-    windows: Iterable[bytes | str],
+    windows: Iterable[ScanWindow],
     rules: tuple[Rule, ...],
     path: str,
 ) -> list[Finding]:
     findings: dict[str, Finding] = {}
-    for window in windows:
+    for scan_window in windows:
+        window = scan_window.data
         for rule in rules:
             if rule.code in findings:
                 continue
@@ -137,7 +144,7 @@ def _scan_windows(
                     code=rule.code,
                     severity=Severity.ERROR,
                     path=path,
-                    line=_line_number(window, match.start()),
+                    line=scan_window.line_base + _line_number(window, match.start()),
                     message=rule.message,
                     fingerprint=_fingerprint(rule.code, matched),
                 )
@@ -150,7 +157,7 @@ def mask_sensitive_text(value: str | None, scope: MetadataScope) -> str | None:
         return None
     raw = value.encode("utf-8", "surrogateescape")
     label = metadata_label(scope, raw)
-    return label if _scan_windows((raw,), RULES, label) else value
+    return label if _scan_windows((ScanWindow(raw, 0),), RULES, label) else value
 
 
 def _safe_file_label(path: str) -> str:
@@ -174,25 +181,29 @@ def _environment_finding(path: bytes, label: str) -> Finding:
     )
 
 
-def _byte_windows(chunks: Iterable[bytes]) -> Iterator[bytes]:
+def _byte_windows(chunks: Iterable[bytes]) -> Iterator[ScanWindow]:
     overlap = b""
+    line_count = 0
     for chunk in chunks:
         window = overlap + chunk
-        yield window
+        yield ScanWindow(window, line_count - overlap.count(b"\n"))
+        line_count += chunk.count(b"\n")
         overlap = window[-OVERLAP:]
 
 
-def _utf16_windows(chunks: Iterable[bytes], encoding: str) -> Iterator[str]:
+def _utf16_windows(chunks: Iterable[bytes], encoding: str) -> Iterator[ScanWindow]:
     decoder = codecs.getincrementaldecoder(encoding)(errors="strict")
     overlap = ""
+    line_count = 0
     for chunk in chunks:
         text = decoder.decode(chunk)
         window = overlap + text
-        yield window
+        yield ScanWindow(window, line_count - overlap.count("\n"))
+        line_count += text.count("\n")
         overlap = window[-OVERLAP:]
     tail = decoder.decode(b"", final=True)
     if tail:
-        yield overlap + tail
+        yield ScanWindow(overlap + tail, line_count - overlap.count("\n"))
 
 
 def _entry_chunks(inventory: Inventory, entry: InventoryEntry) -> Iterator[bytes]:
@@ -207,7 +218,13 @@ def _entry_chunks(inventory: Inventory, entry: InventoryEntry) -> Iterator[bytes
 def scan_inventory(inventory: Inventory) -> GateResult:
     findings: list[Finding] = []
     for metadata_entry in inventory.metadata_entries:
-        findings.extend(_scan_windows((metadata_entry.content,), RULES, metadata_entry.label))
+        findings.extend(
+            _scan_windows(
+                (ScanWindow(metadata_entry.content, 0),),
+                RULES,
+                metadata_entry.label,
+            )
+        )
         if metadata_entry.scope is MetadataScope.FILE_PATH and _is_environment_path(
             metadata_entry.content
         ):

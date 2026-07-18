@@ -71,6 +71,10 @@ The scanner detects configured high-risk indicators. It cannot prove that no
 secret exists. Its trust claim is limited to the declared inventory, configured
 rules and reported errors/exclusions.
 
+Streaming scan windows carry the number of newlines preceding the window. The
+counter excludes repeated overlap bytes or decoded characters, so findings in
+large UTF-8, binary, and UTF-16 files retain absolute one-based line numbers.
+
 ## Official Baseline
 
 Codex skill scope, `SKILL.md`, optional `agents/openai.yaml`, and `AGENTS.md`
