@@ -174,6 +174,11 @@ both report formats. Private paths copied into commit messages remain blocking;
 this intentionally includes CI-host home paths such as `/home/<CI-user>/...`
 and has no CI-host allowlist.
 
+Configured redaction rules include dedicated GitHub, OpenAI, Anthropic, Slack,
+AWS access-key, private-key-header, private host-path, and RFC 1918 private IPv4
+indicators. IPv4 classification uses the standard library and only blocks the
+three RFC 1918 ranges, rather than every address Python classifies as private.
+
 Unix home-path detection has one bounded fixture exception: only `.py` or
 `.swift` files under a `tests` or `*Tests` directory may use the synthetic
 usernames `alice` and `example`. The same names outside test source, and every

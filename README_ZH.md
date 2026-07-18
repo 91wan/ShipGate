@@ -145,6 +145,11 @@ path 或 ref 会在 Markdown 和 JSON 报告中替换为确定性 label。commit
 私有路径仍然阻断，包括 `/home/<CI-user>/...` 形式的 CI host home path，且不设
 CI host allowlist。
 
+已配置的 redaction rules 分别覆盖 GitHub、OpenAI、Anthropic、Slack、AWS
+access key、private key header、private host path 和 RFC 1918 private IPv4
+指标。IPv4 使用 Python 标准库分类，且只阻断 RFC 1918 的三个范围，不把 Python
+判定为 private 的所有地址一并阻断。
+
 Unix home path 检测仅有一条有界 fixture 例外：只有位于 `tests` 或 `*Tests`
 目录中的 `.py` 或 `.swift` 文件，才允许使用 synthetic 用户名 `alice` 和
 `example`。这些名称出现在 test source 之外，或任何其他用户名出现在 test
