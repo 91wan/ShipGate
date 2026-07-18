@@ -47,6 +47,18 @@ Legacy `CODEX_HOME` compatibility scope:
 python3 scripts/install_skill.py --scope codex-home
 ```
 
+Claude Code user scope, available across repositories:
+
+```bash
+python3 scripts/install_skill.py --scope claude-user
+```
+
+Claude Code repository scope, recommended for team-controlled projects:
+
+```bash
+python3 scripts/install_skill.py --scope claude-repo --repo <target-repository>
+```
+
 Preview any installation without writing:
 
 ```bash
@@ -77,8 +89,15 @@ same CLI, report review, and nonzero-exit stop rules.
 
 ### Claude Code
 
-Use `CLAUDE.md` as the adapter. It does not provide another implementation; it
-routes Claude Code to this same checker.
+Install with `--scope claude-user` for personal use or `--scope claude-repo`
+for one repository. Restart Claude Code if the skill directory was created
+while a session was already running, then invoke `/shipgate` or let Claude load
+it automatically. `CLAUDE.md` remains the repository-level release adapter; the
+installed skill and Codex both run the same checker.
+
+Claude Code skill locations were checked against Anthropic's
+[official skills documentation](https://code.claude.com/docs/en/slash-commands)
+on 2026-07-18.
 
 ### Direct CLI
 

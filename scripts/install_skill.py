@@ -63,6 +63,13 @@ def resolve_target(args: argparse.Namespace, env: dict[str, str] | None = None) 
         candidate = repo / ".agents" / "skills" / "shipgate"
     elif args.scope == "user":
         candidate = home / ".agents" / "skills" / "shipgate"
+    elif args.scope == "claude-repo":
+        repo = Path(args.repo or Path.cwd()).expanduser().resolve()
+        if not repo.is_dir():
+            raise InstallError("--repo must point to an existing directory.")
+        candidate = repo / ".claude" / "skills" / "shipgate"
+    elif args.scope == "claude-user":
+        candidate = home / ".claude" / "skills" / "shipgate"
     elif args.scope == "codex-home":
         codex_home = Path(values.get("CODEX_HOME", str(home / ".codex"))).expanduser()
         candidate = codex_home / "skills" / "shipgate"
@@ -153,10 +160,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Safely install the ShipGate skill.")
     parser.add_argument(
         "--scope",
-        choices=("repo", "user", "codex-home", "custom"),
+        choices=("repo", "user", "claude-repo", "claude-user", "codex-home", "custom"),
         default="user",
     )
-    parser.add_argument("--repo", help="Repository root for --scope repo.")
+    parser.add_argument("--repo", help="Repository root for --scope repo or --scope claude-repo.")
     parser.add_argument("--target", help="Absolute target ending in shipgate for custom scope.")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

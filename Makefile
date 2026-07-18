@@ -8,7 +8,7 @@ else
 INSTALL_ARGS = --scope custom --target "$(INSTALL_DIR)"
 endif
 
-.PHONY: compile lint format-check type-check test coverage skill-contract self-check validate install-local install-codex-home official-skill-validate
+.PHONY: compile lint format-check type-check test coverage skill-contract self-check validate install-local install-codex-home install-claude-user official-skill-validate
 
 compile:
 	$(PYTHON) -m compileall -q shipgate scripts tests
@@ -51,3 +51,6 @@ install-local: validate
 
 install-codex-home: validate
 	$(PYTHON) scripts/install_skill.py --scope codex-home
+
+install-claude-user: validate
+	$(PYTHON) scripts/install_skill.py --scope claude-user

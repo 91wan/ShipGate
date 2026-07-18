@@ -37,6 +37,18 @@ python3 scripts/install_skill.py --scope user
 python3 scripts/install_skill.py --scope codex-home
 ```
 
+Claude Code 用户级 scope，可跨仓库使用：
+
+```bash
+python3 scripts/install_skill.py --scope claude-user
+```
+
+Claude Code 仓库级 scope，推荐受团队版本控制的项目使用：
+
+```bash
+python3 scripts/install_skill.py --scope claude-repo --repo <目标仓库>
+```
+
 只预览、不写入：
 
 ```bash
@@ -61,7 +73,13 @@ Codex skill 路径和 `AGENTS.md` 行为已于 2026-07-12 对照
 
 ### Claude Code
 
-使用 `CLAUDE.md` 作为适配器。它不是另一套实现，只负责把 Claude Code 路由到同一个 checker。
+个人使用时安装到 `--scope claude-user`，单仓库使用时安装到
+`--scope claude-repo`。如果目录是在 Claude Code session 启动后才创建，需重启
+Claude Code，然后调用 `/shipgate` 或让 Claude 自动加载。`CLAUDE.md` 仍作为仓库级
+发布适配器；Claude Code 与 Codex 安装使用的是同一个 checker。
+
+Claude Code skill 路径已于 2026-07-18 对照 Anthropic
+[官方 skills 文档](https://code.claude.com/docs/en/slash-commands)核验。
 
 ### 直接 CLI
 

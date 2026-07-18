@@ -68,6 +68,21 @@ class InstallSkillTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertTrue((self.root / "codex" / "skills" / "shipgate" / "SKILL.md").is_file())
 
+    def test_claude_user_and_repo_scopes(self):
+        result = self.run_installer("--scope", "claude-user")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        user_target = self.home / ".claude" / "skills" / "shipgate"
+        self.assertTrue((user_target / "SKILL.md").is_file())
+        self.assertTrue((user_target / "scripts" / "shipgate.py").is_file())
+
+        repo = self.root / "repo"
+        repo.mkdir()
+        result = self.run_installer("--scope", "claude-repo", "--repo", str(repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        repo_target = repo / ".claude" / "skills" / "shipgate"
+        self.assertTrue((repo_target / "SKILL.md").is_file())
+        self.assertTrue((repo_target / "shipgate" / "engine.py").is_file())
+
     def test_custom_scope_rejects_dangerous_targets(self):
         for target in (".", "/", str(self.home), str(self.root / "wrong-name")):
             with self.subTest(target=target):
