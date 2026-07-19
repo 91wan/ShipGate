@@ -147,7 +147,8 @@ source 内，仍然会阻断。
 环境文件名采用 fail-closed 策略。发布面中名为 `.env` 或以 `.env.` 开头的文件
 都会被阻断，包括 `.env.example`，且不设 filename allowlist。经过完整脱敏、需要
 公开的配置模板应改名为 `env.example`。被 Git ignore 且从未 tracked 的本地
-`.env` 不属于 working surface；任何已 tracked 或历史可达的副本仍会阻断。
+`.env` 不属于 working surface；一旦 `.env` 类路径已出现在所选 publication
+inventory 中，Git ignore 不会为其提供豁免。
 
 报告包含 schema/tool 版本、operation、项目 evidence、source commit 和 Git 状态、inventory 数量/错误/排除项、gates、assets 与 recommendations。项目根固定表示为 `.`；报告原子写入且结果稳定。
 

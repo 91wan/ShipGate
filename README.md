@@ -176,8 +176,8 @@ Environment filenames are intentionally fail-closed. Any publication-surface
 file named `.env` or beginning with `.env.` is blocked, including
 `.env.example`; there is no filename allowlist. Publish a fully sanitized
 template as `env.example` instead. An ignored, untracked local `.env` stays
-outside the Git working surface, but any tracked or historically reachable copy
-remains blocking.
+outside the Git working surface. Git ignore does not exempt a `.env`-style path
+once that path is present in the selected publication inventory.
 
 Reports include schema/tool versions, operation, project evidence, source
 commit and Git state, inventory counts/errors/exclusions, gates, assets and
