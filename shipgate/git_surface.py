@@ -222,8 +222,9 @@ def _identity_entries(label: str, raw: bytes) -> list[MetadataEntry]:
     name = raw[:email_start].rstrip()
     email = raw[email_start + 1 : email_end]
     return [
-        _safe_metadata(f"{label}/name", MetadataScope.IDENTITY_NAME, name),
-        _safe_metadata(f"{label}/email", MetadataScope.IDENTITY_EMAIL, email),
+        _safe_metadata(label, MetadataScope.IDENTITY_NAME, name),
+        _safe_metadata(label, MetadataScope.IDENTITY_EMAIL, email),
+        _safe_metadata(label, MetadataScope.OBJECT_HEADER, raw[email_end + 1 :]),
     ]
 
 
@@ -234,22 +235,20 @@ def _object_metadata_entries(
     if not separator:
         raise GitSurfaceError("Git metadata object body was malformed.")
     prefix = f"git-{object_type}/{object_id[:12]}"
-    entries: list[MetadataEntry] = []
+    entries = [_safe_metadata(prefix, MetadataScope.OBJECT_HEADER, header)]
     for line in header.splitlines():
         if object_type == "commit" and line.startswith(b"author "):
-            entries.extend(_identity_entries(f"{prefix}/author", line[len(b"author ") :]))
+            entries.extend(_identity_entries(prefix, line[len(b"author ") :]))
         elif object_type == "commit" and line.startswith(b"committer "):
-            entries.extend(_identity_entries(f"{prefix}/committer", line[len(b"committer ") :]))
+            entries.extend(_identity_entries(prefix, line[len(b"committer ") :]))
         elif object_type == "tag" and line.startswith(b"tagger "):
-            entries.extend(_identity_entries(f"{prefix}/tagger", line[len(b"tagger ") :]))
+            entries.extend(_identity_entries(prefix, line[len(b"tagger ") :]))
         elif object_type == "tag" and line.startswith(b"tag "):
-            entries.append(
-                _safe_metadata(f"{prefix}/name", MetadataScope.TAG_NAME, line[len(b"tag ") :])
-            )
+            entries.append(_safe_metadata(prefix, MetadataScope.TAG_NAME, line[len(b"tag ") :]))
     message_scope = (
         MetadataScope.COMMIT_MESSAGE if object_type == "commit" else MetadataScope.TAG_MESSAGE
     )
-    entries.append(_safe_metadata(f"{prefix}/message", message_scope, message))
+    entries.append(_safe_metadata(prefix, message_scope, message))
     return entries
 
 

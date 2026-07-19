@@ -48,6 +48,7 @@ class SourceKind(StrEnum):
 class MetadataScope(StrEnum):
     FILE_PATH = "file-path"
     REF_NAME = "ref-name"
+    OBJECT_HEADER = "object-header"
     COMMIT_MESSAGE = "commit-message"
     IDENTITY_NAME = "identity-name"
     IDENTITY_EMAIL = "identity-email"

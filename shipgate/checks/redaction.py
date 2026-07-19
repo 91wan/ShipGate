@@ -159,6 +159,21 @@ def _safe_file_label(path: str) -> str:
     return masked
 
 
+def _is_environment_path(path: bytes) -> bool:
+    lower_name = path.rsplit(b"/", 1)[-1].lower()
+    return lower_name == b".env" or lower_name.startswith(b".env.")
+
+
+def _environment_finding(path: bytes, label: str) -> Finding:
+    return Finding(
+        code="secret.env-file",
+        severity=Severity.ERROR,
+        path=label,
+        message="Environment file is part of the publication surface.",
+        fingerprint=_fingerprint("secret.env-file", path),
+    )
+
+
 def _byte_windows(chunks: Iterable[bytes]) -> Iterator[bytes]:
     overlap = b""
     for chunk in chunks:
@@ -193,20 +208,14 @@ def scan_inventory(inventory: Inventory) -> GateResult:
     findings: list[Finding] = []
     for metadata_entry in inventory.metadata_entries:
         findings.extend(_scan_windows((metadata_entry.content,), RULES, metadata_entry.label))
+        if metadata_entry.scope is MetadataScope.FILE_PATH and _is_environment_path(
+            metadata_entry.content
+        ):
+            path = metadata_entry.content.decode("utf-8", "surrogateescape")
+            findings.append(_environment_finding(metadata_entry.content, _safe_file_label(path)))
         inventory.scanned_metadata += 1
     for entry in inventory.entries:
         safe_path = _safe_file_label(entry.path)
-        lower_name = entry.path.rsplit("/", 1)[-1].lower()
-        if lower_name == ".env" or lower_name.startswith(".env."):
-            findings.append(
-                Finding(
-                    code="secret.env-file",
-                    severity=Severity.ERROR,
-                    path=safe_path,
-                    message="Environment file is part of the publication surface.",
-                    fingerprint=_fingerprint("secret.env-file", entry.path),
-                )
-            )
         try:
             byte_count = 0
 

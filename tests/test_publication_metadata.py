@@ -66,6 +66,55 @@ class PublicationMetadataTests(unittest.TestCase):
         )
         git(project, "tag", "-a", "ghost-tree", tree, "-m", "ghost tree")
 
+    def write_object(self, project: Path, object_type: str, content: bytes) -> str:
+        return (
+            subprocess.run(
+                ["git", "hash-object", "--literally", "-t", object_type, "-w", "--stdin"],
+                cwd=project,
+                input=content,
+                capture_output=True,
+                check=True,
+            )
+            .stdout.decode("ascii")
+            .strip()
+        )
+
+    def add_custom_header_commit(self, project: Path, value: str) -> None:
+        parent = git(project, "rev-parse", "HEAD")
+        tree = git(project, "rev-parse", "HEAD^{tree}")
+        identity = b"ShipGate Tests <tests@example.invalid> 1700000000 +0000"
+        content = b"\n".join(
+            (
+                f"tree {tree}".encode("ascii"),
+                f"parent {parent}".encode("ascii"),
+                b"author " + identity,
+                b"committer " + identity,
+                b"x-shipgate-review " + value.encode("ascii"),
+                b"",
+                b"custom header fixture",
+                b"",
+            )
+        )
+        object_id = self.write_object(project, "commit", content)
+        git(project, "update-ref", "refs/heads/main", object_id)
+
+    def add_custom_header_tag(self, project: Path, value: str) -> None:
+        target = git(project, "rev-parse", "HEAD")
+        content = b"\n".join(
+            (
+                f"object {target}".encode("ascii"),
+                b"type commit",
+                b"tag custom-header",
+                b"tagger ShipGate Tests <tests@example.invalid> 1700000000 +0000",
+                b"x-shipgate-review " + value.encode("ascii"),
+                b"",
+                b"custom tag header fixture",
+                b"",
+            )
+        )
+        object_id = self.write_object(project, "tag", content)
+        git(project, "update-ref", "refs/tags/custom-header", object_id)
+
     def assert_reports_mask(self, report, secret: str) -> None:
         self.assertNotIn(secret, render_json(report))
         self.assertNotIn(secret, render_markdown(report))
@@ -147,6 +196,35 @@ class PublicationMetadataTests(unittest.TestCase):
         self.assertIn("secret.github-token", self.redaction_codes(ref_report))
         self.assert_reports_mask(ref_report, token)
 
+    def test_custom_commit_header_is_scanned_and_masked(self):
+        token = github_token()
+        commit_project = make_skill(self.root / "custom-commit-header")
+        init_git(commit_project)
+        self.add_custom_header_commit(commit_project, token)
+
+        commit_report = run_check(
+            commit_project,
+            operation=Operation.PUBLIC_PUSH,
+            project_type=ProjectType.CODEX_SKILL,
+        )
+        self.assertEqual(commit_report.status.value, "fail")
+        self.assertIn("secret.github-token", self.redaction_codes(commit_report))
+        self.assert_reports_mask(commit_report, token)
+
+    def test_custom_tag_header_is_scanned_and_masked(self):
+        token = github_token()
+        tag_project = make_skill(self.root / "custom-tag-header")
+        init_git(tag_project)
+        self.add_custom_header_tag(tag_project, token)
+        tag_report = run_check(
+            tag_project,
+            operation=Operation.PUBLIC_PUSH,
+            project_type=ProjectType.CODEX_SKILL,
+        )
+        self.assertEqual(tag_report.status.value, "fail")
+        self.assertIn("secret.github-token", self.redaction_codes(tag_report))
+        self.assert_reports_mask(tag_report, token)
+
     def test_working_index_and_renamed_history_paths_are_scanned(self):
         token = github_token()
         project = make_skill(self.root / "path-surfaces")
@@ -176,6 +254,23 @@ class PublicationMetadataTests(unittest.TestCase):
         self.assertEqual(history_report.status.value, "fail")
         self.assertIn("secret.github-token", self.redaction_codes(history_report))
         self.assert_reports_mask(history_report, token)
+
+    def test_renamed_historical_env_path_remains_blocking(self):
+        project = make_skill(self.root / "historical-env")
+        env_file = project / ".env"
+        env_file.write_text("SAFE_FIXTURE=value\n", encoding="utf-8")
+        init_git(project)
+        git(project, "mv", ".env", "env.example")
+        git(project, "commit", "-q", "-m", "rename environment template")
+
+        report = run_check(
+            project,
+            operation=Operation.PUBLIC_PUSH,
+            project_type=ProjectType.CODEX_SKILL,
+        )
+
+        self.assertEqual(report.status.value, "fail")
+        self.assertIn("secret.env-file", self.redaction_codes(report))
 
     def test_non_commit_tree_ref_paths_are_scanned_and_masked(self):
         token = github_token()

@@ -38,6 +38,12 @@ non-commit tree refs, ref names, commit/tag messages, tag names, and typed Git
 identity fields. `index`, `head`, `git-ref` and `history-all` are explicit source
 models; invalid operation/source combinations are CLI usage errors.
 
+Raw commit and annotated-tag header blocks are scanned in addition to typed
+identity fields. Unknown headers and continuation lines therefore remain in the
+redaction surface instead of being silently ignored. Filename policies run on
+every inventoried path, including historical names that no longer label a
+deduplicated blob.
+
 History blobs and commit/tag objects are read through `git cat-file --batch`;
 historical paths use one `git diff-tree --stdin --root -r -m --no-renames`
 invocation so renamed-away and merge-introduced paths remain visible. No
