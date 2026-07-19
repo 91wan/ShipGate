@@ -15,7 +15,8 @@ public release checks.
 - `operation`: `local`, `public-push`, `tag`, or `release`.
 - `project`: requested/detected type and evidence.
 - `source`: source kind, ref/commit and Git dirty/shallow/submodule state.
-- `inventory`: considered/scanned counts, bytes, exclusions and errors.
+- `inventory`: considered/scanned file and metadata counts, bytes, exclusions
+  and errors.
 - `gates`: ordered gate outcomes and findings.
 - `assets`: relative label, status, size, SHA-256 and detail.
 - `recommendations`: next actions derived from failed gates.
@@ -37,8 +38,10 @@ Every gate contains `id`, compatibility `name`, `status`, `detail` and
 ```
 
 The fingerprint is a truncated hash of rule code and matched value. The matched
-value itself is never reported. Line numbers are best-effort for streaming
-windows and may be null when unavailable.
+value itself is never reported. If a path or ref contains a configured
+high-risk indicator, reports use a deterministic scope-and-hash label instead
+of the original text. Line numbers are best-effort for streaming windows and
+may be null when unavailable.
 
 ## Compatibility
 

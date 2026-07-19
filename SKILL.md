@@ -44,6 +44,12 @@ Treat every nonzero exit code as a hard stop. Do not look only at overall
 status: review `operation`, `source`, commit, dirty/shallow/submodule state,
 inventory counts/errors/exclusions, findings, and assets.
 
+Confirm the redaction gate covered publication metadata as well as file content:
+working, index, and historical paths; ref names; commit and annotated-tag
+messages; tag names; and typed Git identity fields. A private home path in a
+commit message, including a CI-host path under `/home/<CI-user>/`, remains a
+blocking finding.
+
 Fix inventory and redaction errors first. Unknown, unreadable, unscanned, or
 unverified publication content is not a pass. Do not claim absolute
 secret-freedom; ShipGate reports whether its configured high-risk indicators

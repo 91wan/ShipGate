@@ -9,7 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .inventory import inventory_error, safe_relative
-from .model import Exclusion, Finding, Inventory, InventoryEntry, SourceKind, SourceMetadata
+from .model import (
+    Exclusion,
+    Finding,
+    Inventory,
+    InventoryEntry,
+    MetadataEntry,
+    MetadataScope,
+    SourceKind,
+    SourceMetadata,
+    metadata_label,
+)
 
 GIT_TIMEOUT_SECONDS = 30
 
@@ -64,6 +74,15 @@ def require_git_output(project: Path, args: Iterable[str]) -> str:
 class GitContext:
     root: Path
     metadata: SourceMetadata
+
+
+def _path_metadata(path: str) -> MetadataEntry:
+    raw = path.encode("utf-8", "surrogateescape")
+    return MetadataEntry(metadata_label(MetadataScope.FILE_PATH, raw), MetadataScope.FILE_PATH, raw)
+
+
+def _safe_metadata(label: str, scope: MetadataScope, content: bytes) -> MetadataEntry:
+    return MetadataEntry(label, scope, content)
 
 
 def inspect_git(
@@ -160,7 +179,160 @@ def _working_entries(
     return entries, exclusions
 
 
-def _history_entries(root: Path, ref: str | None, all_refs: bool) -> list[InventoryEntry]:
+def _batch_read_objects(root: Path, object_ids: list[str]) -> dict[str, tuple[str, bytes]]:
+    if not object_ids:
+        return {}
+    payload = b"".join(item.encode("ascii") + b"\n" for item in object_ids)
+    result = run_git(root, ["cat-file", "--batch"], text=False, input_data=payload)
+    if result.returncode != 0:
+        raise GitSurfaceError("Git metadata objects could not be read.")
+    assert isinstance(result.stdout, bytes)
+    output = result.stdout
+    cursor = 0
+    objects: dict[str, tuple[str, bytes]] = {}
+    while cursor < len(output):
+        line_end = output.find(b"\n", cursor)
+        if line_end < 0:
+            raise GitSurfaceError("Git metadata object framing was invalid.")
+        header = output[cursor:line_end].split()
+        if len(header) != 3:
+            raise GitSurfaceError("Git metadata object header was invalid.")
+        try:
+            object_id = header[0].decode("ascii")
+            object_type = header[1].decode("ascii")
+            size = int(header[2])
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise GitSurfaceError("Git metadata object header was invalid.") from exc
+        content_start = line_end + 1
+        content_end = content_start + size
+        if content_end >= len(output) or output[content_end : content_end + 1] != b"\n":
+            raise GitSurfaceError("Git metadata object content was truncated.")
+        objects[object_id] = (object_type, output[content_start:content_end])
+        cursor = content_end + 1
+    if set(objects) != set(object_ids):
+        raise GitSurfaceError("Git metadata object response was incomplete.")
+    return objects
+
+
+def _identity_entries(label: str, raw: bytes) -> list[MetadataEntry]:
+    email_end = raw.rfind(b">")
+    email_start = raw.rfind(b"<", 0, email_end)
+    if email_start < 0 or email_end <= email_start:
+        raise GitSurfaceError("Git identity metadata was malformed.")
+    name = raw[:email_start].rstrip()
+    email = raw[email_start + 1 : email_end]
+    return [
+        _safe_metadata(label, MetadataScope.IDENTITY_NAME, name),
+        _safe_metadata(label, MetadataScope.IDENTITY_EMAIL, email),
+        _safe_metadata(label, MetadataScope.OBJECT_HEADER, raw[email_end + 1 :]),
+    ]
+
+
+def _object_metadata_entries(
+    object_id: str, object_type: str, content: bytes
+) -> list[MetadataEntry]:
+    header, separator, message = content.partition(b"\n\n")
+    if not separator:
+        raise GitSurfaceError("Git metadata object body was malformed.")
+    prefix = f"git-{object_type}/{object_id[:12]}"
+    entries = [_safe_metadata(prefix, MetadataScope.OBJECT_HEADER, header)]
+    for line in header.splitlines():
+        if object_type == "commit" and line.startswith(b"author "):
+            entries.extend(_identity_entries(prefix, line[len(b"author ") :]))
+        elif object_type == "commit" and line.startswith(b"committer "):
+            entries.extend(_identity_entries(prefix, line[len(b"committer ") :]))
+        elif object_type == "tag" and line.startswith(b"tagger "):
+            entries.extend(_identity_entries(prefix, line[len(b"tagger ") :]))
+        elif object_type == "tag" and line.startswith(b"tag "):
+            entries.append(_safe_metadata(prefix, MetadataScope.TAG_NAME, line[len(b"tag ") :]))
+    message_scope = (
+        MetadataScope.COMMIT_MESSAGE if object_type == "commit" else MetadataScope.TAG_MESSAGE
+    )
+    entries.append(_safe_metadata(prefix, message_scope, message))
+    return entries
+
+
+def _commit_path_entries(root: Path, commit_ids: list[str]) -> list[MetadataEntry]:
+    if not commit_ids:
+        return []
+    payload = b"".join(item.encode("ascii") + b"\n" for item in commit_ids)
+    result = run_git(
+        root,
+        [
+            "diff-tree",
+            "--stdin",
+            "--root",
+            "-r",
+            "-m",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            "--no-commit-id",
+        ],
+        text=False,
+        input_data=payload,
+    )
+    if result.returncode != 0:
+        raise GitSurfaceError("Git historical paths could not be enumerated.")
+    assert isinstance(result.stdout, bytes)
+    return [
+        MetadataEntry(metadata_label(MetadataScope.FILE_PATH, path), MetadataScope.FILE_PATH, path)
+        for path in sorted(set(item for item in result.stdout.split(b"\0") if item))
+    ]
+
+
+def _ref_entries(
+    root: Path, ref: str | None, all_refs: bool
+) -> tuple[list[MetadataEntry], list[MetadataEntry]]:
+    if all_refs:
+        result = run_git(root, ["for-each-ref", "--format=%(refname)"], text=False)
+        if result.returncode != 0:
+            raise GitSurfaceError("Git refs could not be enumerated.")
+        assert isinstance(result.stdout, bytes)
+        raw_refs = [item for item in result.stdout.splitlines() if item]
+    elif ref is not None:
+        raw_refs = [ref.encode("utf-8", "surrogateescape")]
+    else:
+        raw_refs = []
+
+    refs = [
+        MetadataEntry(metadata_label(MetadataScope.REF_NAME, raw), MetadataScope.REF_NAME, raw)
+        for raw in raw_refs
+    ]
+    tree_paths: list[MetadataEntry] = []
+    seen_trees: set[str] = set()
+    for raw in raw_refs:
+        ref_name = raw.decode("utf-8", "surrogateescape")
+        commit = run_git(root, ["rev-parse", "--verify", "--quiet", f"{ref_name}^{{commit}}"])
+        if commit.returncode == 0:
+            continue
+        tree = run_git(root, ["rev-parse", "--verify", "--quiet", f"{ref_name}^{{tree}}"])
+        if tree.returncode != 0:
+            continue
+        assert isinstance(tree.stdout, str)
+        tree_id = tree.stdout.strip()
+        if not tree_id or tree_id in seen_trees:
+            continue
+        seen_trees.add(tree_id)
+        listing = run_git(root, ["ls-tree", "-r", "-z", "--name-only", tree_id], text=False)
+        if listing.returncode != 0:
+            raise GitSurfaceError("Git non-commit tree paths could not be enumerated.")
+        assert isinstance(listing.stdout, bytes)
+        tree_paths.extend(
+            MetadataEntry(
+                metadata_label(MetadataScope.FILE_PATH, path),
+                MetadataScope.FILE_PATH,
+                path,
+            )
+            for path in listing.stdout.split(b"\0")
+            if path
+        )
+    return refs, tree_paths
+
+
+def _history_inventory(
+    root: Path, ref: str | None, all_refs: bool
+) -> tuple[list[InventoryEntry], list[MetadataEntry]]:
     rev_args = ["-c", "core.quotePath=false", "rev-list", "--objects"]
     rev_args.append("--all" if all_refs else (ref or "HEAD"))
     listing = require_git_output(root, rev_args)
@@ -174,7 +346,7 @@ def _history_entries(root: Path, ref: str | None, all_refs: bool) -> list[Invent
         if path and object_id not in object_paths:
             object_paths[object_id] = path
     if not object_ids:
-        return []
+        return [], []
     payload = "".join(f"{item}\n" for item in object_ids)
     checked = run_git(
         root,
@@ -185,10 +357,20 @@ def _history_entries(root: Path, ref: str | None, all_refs: bool) -> list[Invent
         raise GitSurfaceError("Git history objects could not be inspected.")
     assert isinstance(checked.stdout, str)
     entries: list[InventoryEntry] = []
+    metadata_entries: list[MetadataEntry] = []
     seen: set[str] = set()
+    metadata_ids: list[str] = []
+    commit_ids: list[str] = []
     for line in checked.stdout.splitlines():
         parts = line.split()
-        if len(parts) != 3 or parts[1] != "blob":
+        if len(parts) != 3:
+            raise GitSurfaceError("Git history object metadata was malformed.")
+        if parts[1] in {"commit", "tag"}:
+            metadata_ids.append(parts[0])
+            if parts[1] == "commit":
+                commit_ids.append(parts[0])
+            continue
+        if parts[1] != "blob":
             continue
         object_id, _, size_text = parts
         if object_id in seen:
@@ -203,6 +385,20 @@ def _history_entries(root: Path, ref: str | None, all_refs: bool) -> list[Invent
                 object_id=object_id,
             )
         )
+    for object_id, (object_type, content) in _batch_read_objects(root, metadata_ids).items():
+        if object_type not in {"commit", "tag"}:
+            raise GitSurfaceError("Git metadata object type changed unexpectedly.")
+        metadata_entries.extend(_object_metadata_entries(object_id, object_type, content))
+    metadata_entries.extend(_commit_path_entries(root, commit_ids))
+    ref_metadata, tree_paths = _ref_entries(root, ref, all_refs)
+    metadata_entries.extend(ref_metadata)
+    metadata_entries.extend(tree_paths)
+    metadata_entries.sort(key=lambda item: (item.scope.value, item.label, item.content))
+    return entries, metadata_entries
+
+
+def _history_entries(root: Path, ref: str | None, all_refs: bool) -> list[InventoryEntry]:
+    entries, _ = _history_inventory(root, ref, all_refs)
     return entries
 
 
@@ -256,23 +452,31 @@ def build_git_inventory(
     all_refs: bool,
 ) -> Inventory:
     entries: list[InventoryEntry] = []
+    metadata_entries: list[MetadataEntry] = []
     exclusions: list[Exclusion] = []
     excluded = {item.expanduser().resolve(strict=False) for item in excluded_paths}
     if include_working:
         working, working_excluded = _working_entries(context.root, excluded)
         entries.extend(working)
+        metadata_entries.extend(_path_metadata(item.path) for item in working)
         exclusions.extend(working_excluded)
     if include_index:
-        entries.extend(_index_entries(context.root))
+        indexed = _index_entries(context.root)
+        entries.extend(indexed)
+        metadata_entries.extend(_path_metadata(item.path) for item in indexed)
     if include_history:
-        entries.extend(_history_entries(context.root, history_ref, all_refs))
+        historical, historical_metadata = _history_inventory(context.root, history_ref, all_refs)
+        entries.extend(historical)
+        metadata_entries.extend(historical_metadata)
     entries.sort(key=lambda item: (item.source, item.path, item.object_id or ""))
+    metadata_entries.sort(key=lambda item: (item.scope.value, item.label, item.content))
     return Inventory(
         tuple(entries),
         [],
         tuple(sorted(exclusions, key=lambda item: (item.path, item.reason))),
         project_root=context.root,
         git_root=context.root,
+        metadata_entries=tuple(metadata_entries),
     )
 
 

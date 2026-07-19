@@ -51,6 +51,8 @@ def render_markdown(report: Report) -> str:
         f"- Considered files: {inventory['considered_files']}",
         f"- Scanned files: {inventory['scanned_files']}",
         f"- Scanned bytes: {inventory['scanned_bytes']}",
+        f"- Considered metadata: {inventory['considered_metadata']}",
+        f"- Scanned metadata: {inventory['scanned_metadata']}",
         f"- Errors: {len(inventory['errors'])}",
         f"- Exclusions: {len(inventory['excluded'])}",
         "",

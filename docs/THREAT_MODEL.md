@@ -10,6 +10,9 @@ indicators, invalid release structure, or unstable assets were found.
 
 - Credentials, private-key headers and private host paths in working files,
   Git index content, reachable history and supplied assets' metadata.
+- Publication metadata: path and ref names, commit and annotated-tag messages,
+  all object headers, tag names, and typed author/committer/tagger names and
+  emails.
 - Tracked `.github`, build and distribution files when they belong to the
   declared publication surface.
 - Large files, UTF-8/UTF-16 text and ASCII indicators inside binary content.
@@ -35,7 +38,10 @@ platform supports it, and metadata is compared before and after streaming.
 - External symlinks are not followed; broken and unsupported links block.
 - Missing release assets fail unless `--source-only` is explicit.
 - No directory name is broadly ignored once it belongs to the Git publication surface.
-- Reports contain relative labels and fingerprints, not matched secret values.
+- Reports contain relative or deterministic labels and fingerprints, not
+  matched secret values. Secret-bearing path and ref text is never echoed.
+- Private home paths in commit messages remain blocking, including CI host
+  paths under `/home/<CI-user>/`.
 
 ## Out of Scope
 

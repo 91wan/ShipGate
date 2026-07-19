@@ -23,8 +23,13 @@ from shipgate.checks.readme import check_readmes
 from shipgate.engine import run_check
 from shipgate.git_surface import (
     GitSurfaceError,
+    _batch_read_objects,
+    _commit_path_entries,
     _history_entries,
+    _identity_entries,
     _index_entries,
+    _object_metadata_entries,
+    _ref_entries,
     _working_entries,
     inspect_git,
     require_git_output,
@@ -308,6 +313,45 @@ class ErrorPathTests(unittest.TestCase):
             ]
             with self.assertRaises(GitSurfaceError):
                 _index_entries(project)
+
+    def test_git_publication_metadata_error_paths(self):
+        project = make_skill(self.root / "metadata-errors")
+        init_git(project)
+        self.assertEqual(_batch_read_objects(project, []), {})
+        self.assertEqual(_commit_path_entries(project, []), [])
+        self.assertEqual(_ref_entries(project, None, False), ([], []))
+
+        with self.assertRaises(GitSurfaceError):
+            _identity_entries("identity", b"malformed")
+        with self.assertRaises(GitSurfaceError):
+            _object_metadata_entries("abc", "commit", b"missing separator")
+
+        failed = subprocess.CompletedProcess([], 1, b"", b"error")
+        with patch("shipgate.git_surface.run_git", return_value=failed):
+            with self.assertRaises(GitSurfaceError):
+                _batch_read_objects(project, ["abc"])
+            with self.assertRaises(GitSurfaceError):
+                _commit_path_entries(project, ["abc"])
+            with self.assertRaises(GitSurfaceError):
+                _ref_entries(project, None, True)
+
+        malformed_outputs = (
+            b"missing-newline",
+            b"abc blob\n",
+            b"abc blob 2\nx\n",
+            b"abc blob nope\nx\n",
+            b"abc blob 1\nx\n",
+        )
+        for output in malformed_outputs:
+            with (
+                self.subTest(output=output),
+                patch(
+                    "shipgate.git_surface.run_git",
+                    return_value=subprocess.CompletedProcess([], 0, output, b""),
+                ),
+            ):
+                with self.assertRaises(GitSurfaceError):
+                    _batch_read_objects(project, ["def"])
 
     def test_git_working_symlinks_exclusions_and_missing_paths(self):
         project = make_skill(self.root / "working")

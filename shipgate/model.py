@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -42,6 +43,17 @@ class SourceKind(StrEnum):
     HEAD = "head"
     GIT_REF = "git-ref"
     HISTORY_ALL = "history-all"
+
+
+class MetadataScope(StrEnum):
+    FILE_PATH = "file-path"
+    REF_NAME = "ref-name"
+    OBJECT_HEADER = "object-header"
+    COMMIT_MESSAGE = "commit-message"
+    IDENTITY_NAME = "identity-name"
+    IDENTITY_EMAIL = "identity-email"
+    TAG_NAME = "tag-name"
+    TAG_MESSAGE = "tag-message"
 
 
 class Severity(StrEnum):
@@ -118,6 +130,18 @@ class InventoryEntry:
     object_id: str | None = field(default=None, repr=False, compare=False)
 
 
+def metadata_label(scope: MetadataScope, value: bytes) -> str:
+    digest = hashlib.sha256(scope.value.encode("ascii") + b"\0" + value).hexdigest()
+    return f"{scope.value}/sha256:{digest[:16]}"
+
+
+@dataclass(frozen=True)
+class MetadataEntry:
+    label: str
+    scope: MetadataScope
+    content: bytes = field(repr=False, compare=False)
+
+
 @dataclass(frozen=True)
 class Exclusion:
     path: str
@@ -136,6 +160,8 @@ class Inventory:
     scanned_bytes: int = 0
     project_root: Path = field(default=Path("."), repr=False)
     git_root: Path | None = field(default=None, repr=False)
+    metadata_entries: tuple[MetadataEntry, ...] = ()
+    scanned_metadata: int = 0
 
     @property
     def considered_files(self) -> int:
@@ -146,6 +172,8 @@ class Inventory:
             "considered_files": self.considered_files,
             "scanned_files": self.scanned_files,
             "scanned_bytes": self.scanned_bytes,
+            "considered_metadata": len(self.metadata_entries),
+            "scanned_metadata": self.scanned_metadata,
             "excluded": [item.to_dict() for item in self.excluded],
             "errors": [item.to_dict() for item in self.errors],
         }
