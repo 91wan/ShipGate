@@ -40,8 +40,9 @@ Every gate contains `id`, compatibility `name`, `status`, `detail` and
 The fingerprint is a truncated hash of rule code and matched value. The matched
 value itself is never reported. If a path or ref contains a configured
 high-risk indicator, reports use a deterministic scope-and-hash label instead
-of the original text. Line numbers are best-effort for streaming windows and
-may be null when unavailable.
+of the original text. Streaming findings report project-file line numbers using
+an absolute one-based line count; line may be null when a source cannot provide
+one.
 
 ## Compatibility
 
