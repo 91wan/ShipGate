@@ -13,6 +13,7 @@ indicators, invalid release structure, or unstable assets were found.
 - Publication metadata: path and ref names, commit and annotated-tag messages,
   all object headers, tag names, and typed author/committer/tagger names and
   emails.
+- RFC 1918 private IPv4 addresses in scanned publication content.
 - Tracked `.github`, build and distribution files when they belong to the
   declared publication surface.
 - Large files, UTF-8/UTF-16 text and ASCII indicators inside binary content.

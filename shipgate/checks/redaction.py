@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import codecs
 import hashlib
+import ipaddress
 import itertools
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from re import Pattern
@@ -35,6 +36,7 @@ class Rule:
     message: str
     pattern: Pattern[bytes]
     text_pattern: Pattern[str]
+    validator: Callable[[bytes | str], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -43,8 +45,35 @@ class ScanWindow:
     line_base: int
 
 
-def _rule(code: str, message: str, pattern: bytes) -> Rule:
-    return Rule(code, message, re.compile(pattern), re.compile(pattern.decode("ascii")))
+def _rule(
+    code: str,
+    message: str,
+    pattern: bytes,
+    validator: Callable[[bytes | str], bool] | None = None,
+) -> Rule:
+    return Rule(
+        code,
+        message,
+        re.compile(pattern),
+        re.compile(pattern.decode("ascii")),
+        validator,
+    )
+
+
+RFC1918_NETWORKS = (
+    ipaddress.IPv4Network((0x0A000000, 8)),
+    ipaddress.IPv4Network((0xAC100000, 12)),
+    ipaddress.IPv4Network((0xC0A80000, 16)),
+)
+
+
+def _is_rfc1918(value: bytes | str) -> bool:
+    candidate = value.decode("ascii") if isinstance(value, bytes) else value
+    try:
+        address = ipaddress.IPv4Address(candidate)
+    except ipaddress.AddressValueError:
+        return False
+    return any(address in network for network in RFC1918_NETWORKS)
 
 
 RULES = (
@@ -66,7 +95,12 @@ RULES = (
     _rule(
         "secret.openai-key",
         "Configured OpenAI key indicator found.",
-        rb"sk-(?:proj-)?[A-Za-z0-9_-]{20,}",
+        rb"sk-(?!ant-)(?:proj-)?[A-Za-z0-9_-]{20,}",
+    ),
+    _rule(
+        "secret.anthropic-key",
+        "Configured Anthropic key indicator found.",
+        rb"sk-ant-[A-Za-z0-9_-]{20,}",
     ),
     _rule(
         "secret.slack-token",
@@ -82,6 +116,12 @@ RULES = (
         "secret.private-key",
         "Private key header found.",
         rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+    ),
+    _rule(
+        "network.private-ipv4",
+        "RFC 1918 private IPv4 address found.",
+        rb"(?<![A-Za-z0-9.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![A-Za-z0-9.])",
+        _is_rfc1918,
     ),
 )
 
@@ -138,6 +178,8 @@ def _scan_windows(
             )
             for match in matches:
                 matched = match.group(0)
+                if rule.validator is not None and not rule.validator(matched):
+                    continue
                 if _is_allowed_synthetic_test_fixture(rule, path, matched):
                     continue
                 findings[rule.code] = Finding(

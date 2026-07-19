@@ -205,6 +205,45 @@ class CoreUnitTests(unittest.TestCase):
         self.assertIn("secret.private-key", codes)
         self.assertIn("path.private-windows", codes)
 
+    def test_rfc1918_ipv4_ranges_are_blocked_without_public_false_positives(self):
+        private_addresses = (
+            ".".join(("10", "1", "2", "3")),
+            ".".join(("172", "16", "0", "1")),
+            ".".join(("172", "31", "255", "254")),
+            ".".join(("192", "168", "1", "10")),
+        )
+        for index, address in enumerate(private_addresses):
+            project = make_skill(self.root / f"private-ip-{index}")
+            (project / "config.txt").write_text(address, encoding="utf-8")
+            report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+            redaction = next(item for item in report.gates if item.id == "redaction")
+            self.assertIn("network.private-ipv4", {item.code for item in redaction.findings})
+
+        public_or_invalid = (
+            ".".join(("9", "255", "255", "255")),
+            ".".join(("172", "15", "255", "255")),
+            ".".join(("172", "32", "0", "1")),
+            ".".join(("192", "169", "1", "1")),
+            ".".join(("999", "1", "1", "1")),
+        )
+        project = make_skill(self.root / "public-ip")
+        (project / "config.txt").write_text("\n".join(public_or_invalid), encoding="utf-8")
+        report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+        redaction = next(item for item in report.gates if item.id == "redaction")
+        self.assertNotIn("network.private-ipv4", {item.code for item in redaction.findings})
+
+    def test_anthropic_key_uses_its_own_rule_code(self):
+        project = make_skill(self.root / "anthropic-key")
+        token = "sk" + "-ant-api03-" + ("A" * 40)
+        (project / "config.txt").write_text(token, encoding="utf-8")
+
+        report = run_check(project, project_type=ProjectType.CODEX_SKILL)
+
+        redaction = next(item for item in report.gates if item.id == "redaction")
+        codes = {item.code for item in redaction.findings}
+        self.assertIn("secret.anthropic-key", codes)
+        self.assertNotIn("secret.openai-key", codes)
+
     def test_synthetic_unix_path_fixture_is_allowed_in_test_source(self):
         project = make_skill(self.root / "synthetic-test-source")
         tests = project / "DemoTests"
