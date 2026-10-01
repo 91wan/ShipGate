@@ -4,13 +4,14 @@ import json
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from shipgate import cli
+from shipgate import __version__, cli
 from shipgate.engine import run_check
 from shipgate.model import ProjectType
 from shipgate.reporting import ReportWriteError, clean_text, render_json, render_markdown
@@ -25,6 +26,17 @@ class CliAndReportingTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_package_version_uses_runtime_source(self):
+        with (ROOT / "pyproject.toml").open("rb") as handle:
+            configuration = tomllib.load(handle)
+        project = configuration["project"]
+        self.assertNotIn("version", project)
+        self.assertIn("version", project.get("dynamic", []))
+        self.assertEqual(
+            configuration["tool"]["setuptools"]["dynamic"]["version"],
+            {"attr": "shipgate.__version__"},
+        )
+
     def test_version_and_python_module_entrypoint(self):
         script = run_cli("--version")
         module = subprocess.run(
@@ -37,6 +49,7 @@ class CliAndReportingTests(unittest.TestCase):
         self.assertEqual(script.returncode, 0)
         self.assertEqual(module.returncode, 0)
         self.assertEqual(script.stdout, module.stdout)
+        self.assertEqual(script.stdout, f"ShipGate {__version__}\n")
 
     def test_invalid_argument_combinations_return_two(self):
         cases = (
@@ -76,6 +89,8 @@ class CliAndReportingTests(unittest.TestCase):
         second = run_check(project, project_type=ProjectType.CODEX_SKILL)
 
         first_json = render_json(first)
+        self.assertEqual(first.shipgate_version, __version__)
+        self.assertEqual(json.loads(first_json)["shipgate_version"], __version__)
         self.assertEqual(first_json, render_json(second))
         self.assertNotIn(str(project.resolve()), first_json)
         self.assertNotIn(str(Path.home()), first_json)

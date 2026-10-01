@@ -215,6 +215,11 @@ python3 -m venv .venv
 make validate PYTHON=.venv/bin/python
 ```
 
+The version is defined only in `shipgate/__init__.py` as `__version__`.
+Setuptools derives package metadata from that attribute; CLI output and reports
+use it directly. Change that value when preparing a new version. Copied skill
+installations use the same runtime source without needing `pyproject.toml`.
+
 `make validate` runs compile checks, Ruff lint and format checks, mypy, unit and
 integration tests, line/branch coverage thresholds, and ShipGate local
 self-check. External official skill validation is deliberately separate:
