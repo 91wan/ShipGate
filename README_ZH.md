@@ -182,6 +182,8 @@ python3 -m venv .venv
 make validate PYTHON=.venv/bin/python
 ```
 
+版本号仅在 `shipgate/__init__.py` 的 `__version__` 中定义。Setuptools 从该属性生成 package metadata，CLI 和报告直接读取同一属性。准备新版本时只修改这个值；目录复制式 skill 安装也使用同一 runtime 来源，无需 `pyproject.toml`。
+
 `make validate` 会运行 compile、Ruff lint/format、mypy、unit/integration tests、line/branch coverage threshold 和 ShipGate local self-check。外部官方 skill validator 明确作为独立检查：
 
 ```bash

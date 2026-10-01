@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shipgate import __version__
 from tests.helpers import ROOT
 
 INSTALLER = ROOT / "scripts" / "install_skill.py"
@@ -45,16 +46,18 @@ class InstallSkillTests(unittest.TestCase):
         self.assertEqual(installed.returncode, 0, installed.stderr)
         self.assertTrue((target / "SKILL.md").is_file())
         self.assertTrue((target / "shipgate" / "engine.py").is_file())
+        self.assertFalse((target / "pyproject.toml").exists())
         self.assertFalse((self.home / "Skills").exists())
 
         version = subprocess.run(
-            [sys.executable, str(target / "scripts" / "shipgate.py"), "--version"],
+            [sys.executable, "-S", str(target / "scripts" / "shipgate.py"), "--version"],
             cwd=self.root,
             text=True,
             capture_output=True,
             check=False,
         )
         self.assertEqual(version.returncode, 0)
+        self.assertEqual(version.stdout, f"ShipGate {__version__}\n")
 
     def test_repo_and_codex_home_scopes(self):
         repo = self.root / "repo"
